@@ -18,8 +18,15 @@ export function AuthProvider({children}) {
 
         api.get("/auth/me/")
             .then((response) => setUser(response.data))
-            .catch(() => localStorage.clear())
+            .catch(() => setUser(null))
             .finally(() => setLoading(false));
+    }, []);
+
+    // When client.js can't refresh the token
+    useEffect(() => {
+        const onForcedLogout = () => setUser(null);
+        window.addEventListener("auth:logout", onForcedLogout);
+        return () => window.removeEventListener("auth:logout", onForcedLogout);
     }, []);
 
     // Function to log in a user
