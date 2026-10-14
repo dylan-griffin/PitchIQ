@@ -4,6 +4,11 @@ import api from "../api/client";
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
+function clearAuthTokens(){
+    localStorage.removeItem("access");
+    localStorage.removeItem("refresh");
+}
+
 export function AuthProvider({children}) {
     // State to hold the current user and loading status
     const [user, setUser] = useState(null);
@@ -18,7 +23,12 @@ export function AuthProvider({children}) {
 
         api.get("/auth/me/")
             .then((response) => setUser(response.data))
-            .catch(() => setUser(null))
+            .catch((error) => {
+                setUser(null);
+                if (error.response?.status === 401) {
+                    clearAuthTokens();
+                }
+            })
             .finally(() => setLoading(false));
     }, []);
 
@@ -34,9 +44,16 @@ export function AuthProvider({children}) {
         const { data } = await api.post("/auth/login/", { username, password });
         localStorage.setItem("access", data.access);
         localStorage.setItem("refresh", data.refresh);
-        const me = await api.get("/auth/me/");
-        setUser(me.data);
-        return me.data;
+        
+        try {
+            const me = await api.get("/auth/me/");
+            setUser(me.data);
+            return me.data;
+        } catch (error) {
+            clearAuthTokens();
+            setUser(null);
+            throw error;
+        }
     };
 
     // Function to register a new user and log them in
@@ -47,7 +64,7 @@ export function AuthProvider({children}) {
 
     // Function to log out the user
     const logout = () => {
-        localStorage.clear();
+        clearAuthTokens();
         setUser(null);
     };
 

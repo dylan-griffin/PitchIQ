@@ -22,7 +22,10 @@ export default function Login() {
             const user = await login(form.username, form.password);
             navigate(user.role === "pitcher" ? "/check-in" : "/dashboard");
         } catch (err) {
-            setError(err.response?.status === 401 ? "Invalid username or password" : errorMessage(err));
+            const isInvalidCredentials = err.response?.status === 401 && err.config?.url?.endsWith("/auth/login/");
+            setError(
+                isInvalidCredentials ? "Invalid username or password" : errorMessage(err)
+            );
         } finally {
             setSubmitting(false);
         }
