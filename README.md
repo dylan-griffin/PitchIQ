@@ -42,10 +42,27 @@ cp .env.example .env
 python manage.py migrate
 ```
 
+Note: If using Mac instead of Windows, use:
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+python manage.py migrate
+```
+
 ### Running
 ```bash
 cd backend
 .venv/Scripts/activate
+python manage.py runserver
+```
+
+For Mac:
+```bash
+cd backend
+source .venv/bin/activate
 python manage.py runserver
 ```
 
@@ -80,3 +97,17 @@ npm run dev
 | What changed | Commands |
 |--------------|----------|
 | `package.json` | `npm install` |
+
+
+### Login/Authentication Info
+## Admin Login
+To create an admin account:
+```bash
+cd backend
+python manage.py createsuperuser
+```
+Then fill in info for username, email, and password.
+Admin API: http://127.0.0.1:8000/admin
+
+## Pitcher Login/Signup
+Pitcher account signup and login can be done through the frontend app
