@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import PitcherOuting
+from .models import PitcherOuting, PitcherDailyCheckIn
 from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import User
@@ -15,6 +15,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         return User.objects.create_user(**validated_data)
+
 
 ## For getting an authenticated user's information
 class MeSerializer(serializers.ModelSerializer):
@@ -49,3 +50,21 @@ class PitcherOutingSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+class PitcherDailyCheckInSerializer(serializers.ModelSerializer):
+    pitcher_username = serializers.CharField(source="pitcher.username", read_only=True)
+    class Meta:
+        model = PitcherDailyCheckIn
+        fields = [
+            "id",
+            "pitcher",
+            "pitcher_username",
+            "date",
+            "soreness",
+            "fatigue",
+            "sleep_hours",
+            "sleep_quality",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "pitcher", "date", "created_at", "updated_at"]
