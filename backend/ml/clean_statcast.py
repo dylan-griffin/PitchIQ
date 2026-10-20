@@ -73,12 +73,13 @@ def clean_pitches(df):
     if missing_req:
         raise ValueError(f"Missing required columns: {missing_req}")
 
+    has_game_type = "game_type" in df.columns
     for c in KEEP_COLUMNS:
         if c not in df.columns:
             df[c] = pd.NA
 
-    # Filter regular season
-    if "game_type" in df.columns:
+    # Filter regular season (only when the input actually has game_type)
+    if has_game_type:
         before = len(df)
         df = df[df["game_type"] == "R"]
         dropped = before - len(df)
@@ -163,6 +164,7 @@ def clean_pitches(df):
 
     # Normalize types
     df["game_date"] = pd.to_datetime(df["game_date"]).dt.normalize()
+    df["game_year"] = df["game_year"].fillna(df["game_date"].dt.year)
 
     int_cols = ["pitcher", "game_pk", "game_year", "at_bat_number", "pitch_number", "balls", "strikes", "outs_when_up", "inning", "zone"]
     for col in int_cols:
@@ -234,112 +236,144 @@ def validate_pitches(df):
             raise ValueError("pitch_number must be >= 1.")
 
 
+OUTING_COLUMNS = [
+    "pitcher", "pitcher_name", "game_pk", "game_date", "game_year", "p_throws",
+    "pitch_count", "batters_faced", "innings_pitched_approx", "avg_velo", "max_velo",
+    "min_velo", "velo_std", "avg_spin", "max_spin", "avg_extension", "avg_release_pos_x",
+    "avg_release_pos_z", "fastball_pct", "avg_fastball_velo", "max_fastball_velo", "days_rest",
+]
+
+FASTBALL_TYPES = ["FF", "SI", "FC"]
+
+
 def aggregate_outings(df):
-    """Aggregate pitch-level data into pitcher game outings."""
-    outings = []
-    for (pitcher, game_pk), group in df.groupby(["pitcher", "game_pk"]):
-        game_date = group["game_date"].iloc[0]
-        game_year = group["game_year"].iloc[0] if "game_year" in group.columns and pd.notna(group["game_year"].iloc[0]) else (game_date.year if pd.notna(game_date) else pd.NA)
-        pitcher_name = group["pitcher_name"].iloc[0] if "pitcher_name" in group.columns else pd.NA
-        p_throws = group["p_throws"].iloc[0] if "p_throws" in group.columns else pd.NA
+    """Aggregate pitch-level data into one row per pitcher per game."""
+    if df.empty:
+        return pd.DataFrame(columns=OUTING_COLUMNS)
 
-        pitch_count = len(group)
-        batters_faced = group["at_bat_number"].nunique()
-        innings_pitched_approx = group["inning"].nunique()
+    df = df.copy()
+    for col in ["release_spin_rate", "release_extension", "release_pos_x", "release_pos_z"]:
+        if col not in df.columns:
+            df[col] = float("nan")
+    for col in ["pitcher_name", "p_throws", "game_year"]:
+        if col not in df.columns:
+            df[col] = pd.NA
 
-        rs = group["release_speed"].dropna()
-        avg_velo = rs.mean() if len(rs) > 0 else float("nan")
-        max_velo = rs.max() if len(rs) > 0 else float("nan")
-        min_velo = rs.min() if len(rs) > 0 else float("nan")
-        velo_std = rs.std() if len(rs) > 1 else (0.0 if len(rs) == 1 else float("nan"))
+    is_fb = df["pitch_type"].isin(FASTBALL_TYPES).fillna(False).astype(bool)
+    df["_is_fb"] = is_fb.astype("int64")
+    df["_fb_velo"] = df["release_speed"].where(is_fb)
 
-        spin = group["release_spin_rate"].dropna() if "release_spin_rate" in group.columns else pd.Series(dtype=float)
-        avg_spin = spin.mean() if len(spin) > 0 else float("nan")
-        max_spin = spin.max() if len(spin) > 0 else float("nan")
+    grouped = df.groupby(["pitcher", "game_pk"], sort=False)
+    outings = grouped.agg(
+        pitcher_name=("pitcher_name", "first"),
+        game_date=("game_date", "first"),
+        game_year=("game_year", "first"),
+        p_throws=("p_throws", "first"),
+        pitch_count=("pitch_number", "size"),
+        batters_faced=("at_bat_number", "nunique"),
+        innings_pitched_approx=("inning", "nunique"),
+        avg_velo=("release_speed", "mean"),
+        max_velo=("release_speed", "max"),
+        min_velo=("release_speed", "min"),
+        velo_std=("release_speed", "std"),
+        avg_spin=("release_spin_rate", "mean"),
+        max_spin=("release_spin_rate", "max"),
+        avg_extension=("release_extension", "mean"),
+        avg_release_pos_x=("release_pos_x", "mean"),
+        avg_release_pos_z=("release_pos_z", "mean"),
+        fb_count=("_is_fb", "sum"),
+        avg_fastball_velo=("_fb_velo", "mean"),
+        max_fastball_velo=("_fb_velo", "max"),
+    ).reset_index()
 
-        ext = group["release_extension"].dropna() if "release_extension" in group.columns else pd.Series(dtype=float)
-        avg_extension = ext.mean() if len(ext) > 0 else float("nan")
+    # A single pitch has no spread; report 0 instead of NaN
+    single = outings["pitch_count"] == 1
+    outings.loc[single, "velo_std"] = 0.0
 
-        rpx = group["release_pos_x"].dropna() if "release_pos_x" in group.columns else pd.Series(dtype=float)
-        avg_release_pos_x = rpx.mean() if len(rpx) > 0 else float("nan")
+    outings["fastball_pct"] = outings["fb_count"] / outings["pitch_count"]
+    outings = outings.drop(columns="fb_count")
 
-        rpz = group["release_pos_z"].dropna() if "release_pos_z" in group.columns else pd.Series(dtype=float)
-        avg_release_pos_z = rpz.mean() if len(rpz) > 0 else float("nan")
+    missing_year = outings["game_year"].isna()
+    if missing_year.any():
+        outings.loc[missing_year, "game_year"] = outings.loc[missing_year, "game_date"].dt.year
 
-        pt = group["pitch_type"] if "pitch_type" in group.columns else pd.Series(dtype=str)
-        fb_mask = pt.isin(["FF", "SI", "FC"])
-        fb_count = fb_mask.sum()
-        fastball_pct = fb_count / pitch_count if pitch_count > 0 else 0.0
+    outings = outings.sort_values(["pitcher", "game_date", "game_pk"]).reset_index(drop=True)
 
-        fb_rs = group.loc[fb_mask, "release_speed"].dropna()
-        avg_fastball_velo = fb_rs.mean() if len(fb_rs) > 0 else float("nan")
-        max_fastball_velo = fb_rs.max() if len(fb_rs) > 0 else float("nan")
+    # Days since the pitcher's previous outing in the same season.
+    # The first outing of each season is NaN so the offseason gap is not counted as rest.
+    outings["days_rest"] = (
+        outings.groupby(["pitcher", "game_year"])["game_date"].diff().dt.days.astype("float64")
+    )
 
-        outings.append({
-            "pitcher": pitcher,
-            "pitcher_name": pitcher_name,
-            "game_pk": game_pk,
-            "game_date": game_date,
-            "game_year": game_year,
-            "p_throws": p_throws,
-            "pitch_count": pitch_count,
-            "batters_faced": batters_faced,
-            "innings_pitched_approx": innings_pitched_approx,
-            "avg_velo": avg_velo,
-            "max_velo": max_velo,
-            "min_velo": min_velo,
-            "velo_std": velo_std,
-            "avg_spin": avg_spin,
-            "max_spin": max_spin,
-            "avg_extension": avg_extension,
-            "avg_release_pos_x": avg_release_pos_x,
-            "avg_release_pos_z": avg_release_pos_z,
-            "fastball_pct": fastball_pct,
-            "avg_fastball_velo": avg_fastball_velo,
-            "max_fastball_velo": max_fastball_velo,
-        })
+    for col in ["pitcher", "game_pk", "game_year", "pitch_count", "batters_faced", "innings_pitched_approx"]:
+        outings[col] = outings[col].astype("int64")
+    for col in ["avg_velo", "max_velo", "min_velo", "velo_std", "avg_spin", "max_spin",
+                "avg_extension", "avg_release_pos_x", "avg_release_pos_z", "fastball_pct",
+                "avg_fastball_velo", "max_fastball_velo"]:
+        outings[col] = outings[col].astype("float64")
 
-    cols = [
-        "pitcher", "pitcher_name", "game_pk", "game_date", "game_year", "p_throws",
-        "pitch_count", "batters_faced", "innings_pitched_approx", "avg_velo", "max_velo",
-        "min_velo", "velo_std", "avg_spin", "max_spin", "avg_extension", "avg_release_pos_x",
-        "avg_release_pos_z", "fastball_pct", "avg_fastball_velo", "max_fastball_velo", "days_rest"
-    ]
+    return outings[OUTING_COLUMNS]
 
-    outings_df = pd.DataFrame(outings)
-    if outings_df.empty:
-        return pd.DataFrame(columns=cols)
 
-    outings_df = outings_df.sort_values(["pitcher", "game_date"]).reset_index(drop=True)
+def _is_combined_file(path):
+    return "_combined" in path.name or re.match(r"statcast_\d{4}\.parquet$", path.name) is not None
 
-    outings_df["days_rest"] = outings_df.groupby("pitcher")["game_date"].diff().dt.days.astype("float64")
 
-    outings_df = outings_df.sort_values(["pitcher", "game_date"]).reset_index(drop=True)
-    return outings_df[cols]
+def raw_chunk_files(raw_dir):
+    """List raw Statcast chunk files, skipping combined files that repeat chunk rows."""
+    raw_dir = Path(raw_dir)
+    if not raw_dir.exists():
+        return []
+    return [f for f in sorted(raw_dir.glob("statcast_*.parquet")) if not _is_combined_file(f)]
+
+
+def read_raw_file(path):
+    """Read one raw file, keeping only the columns the cleaner uses."""
+    path = Path(path)
+    wanted = set(KEEP_COLUMNS) | {"player_name"}
+    if path.suffix == ".csv":
+        return pd.read_csv(path, usecols=lambda c: c in wanted, low_memory=False)
+    import pyarrow.parquet as pq
+
+    available = pq.read_schema(path).names
+    return pd.read_parquet(path, columns=[c for c in available if c in wanted])
 
 
 def load_raw(raw_dir):
-    """Load all raw Statcast chunk files from a directory.
+    """Load all raw Statcast chunk files from a directory (only the needed columns).
 
     Combined files (statcast_<year>.parquet and *_combined.parquet) are skipped
     because they repeat the rows already in the chunk files.
     """
-    raw_dir = Path(raw_dir)
-    if not raw_dir.exists():
-        return pd.DataFrame()
-
-    chunk_files = [
-        f for f in sorted(raw_dir.glob("statcast_*.parquet"))
-        if "_combined" not in f.name and not re.match(r"statcast_\d{4}\.parquet$", f.name)
-    ]
-
+    chunk_files = raw_chunk_files(raw_dir)
     if not chunk_files:
         logger.warning("No raw Statcast chunk files found in %s", raw_dir)
         return pd.DataFrame()
 
     logger.info("Loading %d raw chunk files from %s", len(chunk_files), raw_dir)
-    dfs = [pd.read_parquet(f) for f in chunk_files]
-    return pd.concat(dfs, ignore_index=True)
+    return pd.concat([read_raw_file(f) for f in chunk_files], ignore_index=True)
+
+
+def clean_files(paths):
+    """Clean raw files one at a time so memory stays close to the size of the cleaned output."""
+    cleaned = []
+    raw_rows = 0
+    for path in paths:
+        raw = read_raw_file(path)
+        raw_rows += len(raw)
+        if raw.empty:
+            continue
+        cleaned.append(clean_pitches(raw))
+        del raw
+
+    if not cleaned:
+        return pd.DataFrame(), raw_rows
+
+    df = pd.concat(cleaned, ignore_index=True)
+    # Chunks can overlap if different date ranges were collected, so dedupe across files too
+    df = df.drop_duplicates(subset=["game_pk", "at_bat_number", "pitch_number"], keep="first")
+    df = df.sort_values(["game_date", "game_pk", "at_bat_number", "pitch_number"]).reset_index(drop=True)
+    return df, raw_rows
 
 
 def main(argv=None):
@@ -353,40 +387,33 @@ def main(argv=None):
     data_dir = Path(args.data_dir)
     raw_dir = data_dir / "raw"
     clean_dir = data_dir / "clean"
-    clean_dir.mkdir(parents=True, exist_ok=True)
 
-    df = pd.DataFrame()
     if args.input:
-        dfs = []
-        for path_str in args.input:
-            p = Path(path_str)
+        paths = [Path(p) for p in args.input]
+        for p in paths:
             if not p.exists():
                 logger.error("Input file not found: %s", p)
                 sys.exit(1)
-            if p.suffix == ".csv":
-                dfs.append(pd.read_csv(p))
-            else:
-                try:
-                    dfs.append(pd.read_parquet(p))
-                except Exception:
-                    dfs.append(pd.read_csv(p))
-        if dfs:
-            df = pd.concat(dfs, ignore_index=True)
     else:
-        df = load_raw(raw_dir)
+        paths = raw_chunk_files(raw_dir)
+        if not paths:
+            logger.warning("No raw Statcast chunk files found in %s", raw_dir)
 
-    if df.empty:
+    logger.info("Cleaning %d raw files", len(paths))
+    cleaned_df, raw_rows = clean_files(paths)
+
+    if cleaned_df.empty:
         logger.error("No input data found to clean.")
         sys.exit(1)
 
-    logger.info("Loaded raw data with %d rows", len(df))
-    cleaned_df = clean_pitches(df)
+    logger.info("Loaded raw data with %d rows", raw_rows)
     validate_pitches(cleaned_df)
     logger.info("Cleaned pitches: %d rows", len(cleaned_df))
 
     pitcher_games_df = aggregate_outings(cleaned_df)
     logger.info("Aggregated pitcher games: %d rows", len(pitcher_games_df))
 
+    clean_dir.mkdir(parents=True, exist_ok=True)
     ext = "parquet" if args.format == "parquet" else "csv"
     pitches_path = clean_dir / f"pitches.{ext}"
     outings_path = clean_dir / f"pitcher_games.{ext}"

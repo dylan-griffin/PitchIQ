@@ -103,3 +103,48 @@ def test_main_end_to_end(tmp_path, sample_raw_df):
     outings_loaded = pd.read_parquet(clean_dir / "pitcher_games.parquet")
     assert len(pitches_loaded) > 0
     assert len(outings_loaded) > 0
+
+
+def test_clean_pitches_keeps_rows_without_game_type(sample_raw_df):
+    df = sample_raw_df.drop(columns=["game_type"])
+    cleaned = clean_pitches(df)
+    assert len(cleaned) > 0
+
+
+def test_aggregate_single_pitch_and_season_rest():
+    df = pd.DataFrame({
+        "pitcher": [1, 1, 1, 1],
+        "pitcher_name": ["A"] * 4,
+        "game_pk": [10, 11, 11, 12],
+        "game_date": pd.to_datetime(["2023-09-25", "2023-09-30", "2023-09-30", "2024-03-28"]),
+        "game_year": [2023, 2023, 2023, 2024],
+        "p_throws": ["L"] * 4,
+        "at_bat_number": [1, 1, 2, 1],
+        "pitch_number": [1, 1, 1, 1],
+        "inning": [1, 1, 2, 1],
+        "pitch_type": ["FF", "SL", "FF", "CH"],
+        "release_speed": [95.0, 85.0, 96.0, 84.0],
+    })
+    outings = aggregate_outings(df)
+    assert list(outings["game_pk"]) == [10, 11, 12]
+    assert outings.loc[0, "velo_std"] == 0.0
+    assert outings.loc[1, "fastball_pct"] == 0.5
+    assert outings.loc[1, "avg_fastball_velo"] == 96.0
+    assert outings.loc[1, "days_rest"] == 5.0
+    # First outing of a new season does not count the offseason as rest
+    assert pd.isna(outings.loc[2, "days_rest"])
+    assert pd.isna(outings.loc[2, "avg_fastball_velo"])
+
+
+def test_main_dedupes_overlapping_chunks(tmp_path, sample_raw_df):
+    raw_dir = tmp_path / "data" / "raw"
+    raw_dir.mkdir(parents=True)
+    sample_raw_df.to_parquet(raw_dir / "statcast_2024-04-01_2024-04-07.parquet", index=False)
+    sample_raw_df.to_parquet(raw_dir / "statcast_2024-04-01_2024-04-02.parquet", index=False)
+    sample_raw_df.to_parquet(raw_dir / "statcast_2024.parquet", index=False)
+
+    main(["--data-dir", str(tmp_path / "data")])
+
+    once = clean_pitches(sample_raw_df)
+    pitches = pd.read_parquet(tmp_path / "data" / "clean" / "pitches.parquet")
+    assert len(pitches) == len(once)
