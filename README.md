@@ -78,9 +78,19 @@ python manage.py runserver
 ## Statcast data (ML)
 
 ### Overview
-Collects historical Statcast pitch data (2021-2025 regular seasons) from Baseball Savant using `pybaseball`, saving raw chunks as Parquet files under `backend/ml/data/` (which is gitignored).
+Collects historical Statcast pitch data (2021-2025 regular seasons) from Baseball Savant using `pybaseball`, saving raw chunks as Parquet files under `backend/ml/data/` (which is gitignored), then cleans them into model-ready tables.
 
-Note: A full 5-season pull is large (several gigabytes and takes considerable time), but is fully resumable thanks to per-chunk caching. Empty chunks write marker files to prevent re-requesting.
+### Quick start
+From the `backend/` directory, with the backend requirements installed:
+
+```bash
+cd backend
+python -m ml.collect_statcast --seasons 2024 --combine && python -m ml.clean_statcast
+```
+
+Each season takes about 20 seconds to download when Baseball Savant is responsive (it can be slower at busy times). One season is about 710k pitches and 20k pitcher games. Disk use for all 5 seasons is about 500 MB of raw chunks (about 1 GB with `--combine`, which also writes one file per season), plus about 120 MB of cleaned pitches and 6 MB of pitcher games. Cleaning reads one chunk at a time and only the columns it needs: all 5 seasons clean in about 15 seconds and peak around 4 GB of RAM, and the download step peaks around 3 GB while combining a season.
+
+Collection is resumable: chunks that are already downloaded are skipped, and empty chunks write `.empty` marker files so they are not requested again.
 
 ### Running Data Collection
 Run from the `backend/` directory:
@@ -202,7 +212,24 @@ Aggregated pitcher game outings.
 | fastball_pct | float | Fastball share (FF, SI, FC) |
 | avg_fastball_velo | float | Average fastball velocity (mph) |
 | max_fastball_velo | float | Maximum fastball velocity (mph) |
-| days_rest | float | Days rest since previous game |
+| days_rest | float | Days since the pitcher's previous outing in the same season (NaN for the first outing of each season) |
+
+### Using the data in a model
+`ml.datasets` loads the cleaned files as pandas DataFrames with plain numeric dtypes (text columns become `category`):
+
+```python
+from ml.datasets import load_pitcher_games, load_pitches, PITCHER_GAME_FEATURES
+
+games = load_pitcher_games()               # one row per pitcher per game
+X = games[PITCHER_GAME_FEATURES]           # numeric features, ready for scikit-learn
+pitches = load_pitches(seasons=[2024], columns=["pitcher", "game_pk", "pitch_type", "release_speed"])
+```
+
+- `PITCHER_GAME_FEATURES` contains only numeric columns. Some have NaNs (`avg_spin`, fastball velo for pitchers who threw no fastballs, and `days_rest` for the first outing of a season), so use an imputer or a model that handles NaN, such as `HistGradientBoostingClassifier`.
+- The ID columns (`pitcher`, `pitcher_name`, `game_pk`, `game_date`, `game_year`) are for joins and splits, not features. Split train and test by season or date, not randomly, so the same pitcher's later games don't leak into training.
+- Each row describes the game it came from. To predict something about a future game, build features from earlier rows (for example `games.groupby("pitcher").shift(1)` or rolling windows).
+- Very low velocity outings (`avg_velo` under about 75 mph, about 0.5% of rows) are mostly position players pitching; filter them if they matter for your target.
+- `load_pitcher_games(sample=True)` loads a small committed sample (500 pitcher games from 2024, `backend/ml/sample/`) so code can be tried without downloading anything.
 
 ---
 
