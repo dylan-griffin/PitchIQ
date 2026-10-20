@@ -75,6 +75,41 @@ python manage.py runserver
 
 ---
 
+## Statcast data (ML)
+
+### Overview
+Collects historical Statcast pitch data (2021-2025 regular seasons) from Baseball Savant using `pybaseball`, saving raw chunks as Parquet files under `backend/ml/data/` (which is gitignored).
+
+Note: A full 5-season pull is large (several gigabytes and takes considerable time), but is fully resumable thanks to per-chunk caching. Empty chunks write marker files to prevent re-requesting.
+
+### Running Data Collection
+Run from the `backend/` directory:
+
+```bash
+cd backend
+python -m ml.collect_statcast --combine
+```
+
+### Example Commands
+```bash
+# Pull single season
+python -m ml.collect_statcast --seasons 2024 --combine
+
+# Pull small explicit date range (test pull)
+python -m ml.collect_statcast --start 2024-04-01 --end 2024-04-02 --combine
+
+# Force re-download of existing cache
+python -m ml.collect_statcast --start 2024-04-01 --end 2024-04-02 --force
+```
+
+### Running Tests
+```bash
+cd backend
+python -m pytest ml
+```
+
+---
+
 ## Frontend
 
 App: http://localhost:5173
