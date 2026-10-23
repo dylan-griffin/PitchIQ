@@ -97,26 +97,12 @@ Run from the `backend/` directory:
 
 ```bash
 cd backend
-python -m ml.collect_statcast --combine
+python -m ml.collect_statcast --combine                 # all seasons
+python -m ml.collect_statcast --seasons 2024 --combine  # one season
+python -m ml.collect_statcast --start 2024-04-01 --end 2024-04-02 --force  # small test pull
 ```
 
-### Example Commands
-```bash
-# Pull single season
-python -m ml.collect_statcast --seasons 2024 --combine
-
-# Pull small explicit date range (test pull)
-python -m ml.collect_statcast --start 2024-04-01 --end 2024-04-02 --combine
-
-# Force re-download of existing cache
-python -m ml.collect_statcast --start 2024-04-01 --end 2024-04-02 --force
-```
-
-### Running Tests
-```bash
-cd backend
-python -m pytest ml
-```
+Tests: `python -m pytest ml`
 
 ### Cleaning
 Clean raw Statcast pitch data for model training. Run from the `backend/` directory:
