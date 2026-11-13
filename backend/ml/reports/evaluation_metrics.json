@@ -1,0 +1,247 @@
+{
+  "data": "clean pitcher_games, seasons=all",
+  "rows": 41349,
+  "train_rows": 32979,
+  "test_rows": 8370,
+  "high_risk_share": 0.0322,
+  "test_high_risk_share": 0.0282,
+  "saved_model": {
+    "name": "random_forest",
+    "metrics": {
+      "accuracy": 0.9995,
+      "precision": 0.9833,
+      "recall": 1.0,
+      "f1": 0.9916,
+      "roc_auc": 0.9998
+    },
+    "confusion_matrix": [
+      [
+        8130,
+        4
+      ],
+      [
+        0,
+        236
+      ]
+    ],
+    "feature_importance": [
+      [
+        "velo_drop",
+        0.761
+      ],
+      [
+        "days_rest",
+        0.075
+      ],
+      [
+        "avg_fastball_velo",
+        0.041
+      ],
+      [
+        "pitch_count",
+        0.0327
+      ],
+      [
+        "max_fastball_velo",
+        0.0147
+      ],
+      [
+        "max_velo",
+        0.0115
+      ],
+      [
+        "batters_faced",
+        0.011
+      ],
+      [
+        "innings_pitched_approx",
+        0.0084
+      ],
+      [
+        "avg_velo",
+        0.0066
+      ],
+      [
+        "velo_std",
+        0.0062
+      ],
+      [
+        "fastball_pct",
+        0.005
+      ],
+      [
+        "avg_release_pos_x",
+        0.0049
+      ],
+      [
+        "avg_release_pos_z",
+        0.0048
+      ],
+      [
+        "min_velo",
+        0.0044
+      ],
+      [
+        "max_spin",
+        0.0043
+      ],
+      [
+        "avg_spin",
+        0.0041
+      ],
+      [
+        "avg_extension",
+        0.0039
+      ],
+      [
+        "throws_left",
+        0.0004
+      ]
+    ]
+  },
+  "retrained": {
+    "all_features": {
+      "dummy_majority": {
+        "accuracy": 0.9718,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "roc_auc": 0.5
+      },
+      "logistic_regression": {
+        "accuracy": 0.9621,
+        "precision": 0.4268,
+        "recall": 1.0,
+        "f1": 0.5982,
+        "roc_auc": 0.9907
+      },
+      "random_forest": {
+        "accuracy": 0.9995,
+        "precision": 0.9833,
+        "recall": 1.0,
+        "f1": 0.9916,
+        "roc_auc": 0.9998
+      }
+    },
+    "no_label_columns": {
+      "dummy_majority": {
+        "accuracy": 0.9718,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "roc_auc": 0.5
+      },
+      "logistic_regression": {
+        "accuracy": 0.7554,
+        "precision": 0.0727,
+        "recall": 0.6525,
+        "f1": 0.1308,
+        "roc_auc": 0.789
+      },
+      "random_forest": {
+        "accuracy": 0.97,
+        "precision": 0.2973,
+        "recall": 0.0466,
+        "f1": 0.0806,
+        "roc_auc": 0.8556
+      }
+    },
+    "no_label_or_proxy_columns": {
+      "dummy_majority": {
+        "accuracy": 0.9718,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "roc_auc": 0.5
+      },
+      "logistic_regression": {
+        "accuracy": 0.7297,
+        "precision": 0.0711,
+        "recall": 0.7119,
+        "f1": 0.1293,
+        "roc_auc": 0.7814
+      },
+      "random_forest": {
+        "accuracy": 0.9713,
+        "precision": 0.375,
+        "recall": 0.0254,
+        "f1": 0.0476,
+        "roc_auc": 0.8037
+      }
+    }
+  },
+  "no_label_columns_rf": {
+    "confusion_matrix": [
+      [
+        8108,
+        26
+      ],
+      [
+        225,
+        11
+      ]
+    ],
+    "feature_importance": [
+      [
+        "avg_fastball_velo",
+        0.1569
+      ],
+      [
+        "avg_release_pos_z",
+        0.0782
+      ],
+      [
+        "avg_release_pos_x",
+        0.0757
+      ],
+      [
+        "velo_std",
+        0.0737
+      ],
+      [
+        "avg_velo",
+        0.0699
+      ],
+      [
+        "max_spin",
+        0.0687
+      ],
+      [
+        "avg_spin",
+        0.0657
+      ],
+      [
+        "avg_extension",
+        0.0652
+      ],
+      [
+        "min_velo",
+        0.0621
+      ],
+      [
+        "batters_faced",
+        0.0611
+      ],
+      [
+        "fastball_pct",
+        0.0607
+      ],
+      [
+        "max_fastball_velo",
+        0.0603
+      ],
+      [
+        "max_velo",
+        0.0581
+      ],
+      [
+        "innings_pitched_approx",
+        0.0369
+      ],
+      [
+        "throws_left",
+        0.0067
+      ]
+    ]
+  }
+}
